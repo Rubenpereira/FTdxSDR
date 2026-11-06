@@ -1,0 +1,31 @@
+#include <windows.h>
+#include "ui/Recursos.h"
+
+IDI_APP        ICON    "../assets/app.ico"
+// (as imagens do S-meter e do olho magico da tela antiga do RXSDR sairam: nao
+//  sao usadas e 413 KB de PNG dentro do exe parecem "dados criptografados" para
+//  antivirus que olham a entropia dos recursos)
+
+1 VERSIONINFO
+ FILEVERSION RXSDR_VERSAO_RC
+ PRODUCTVERSION RXSDR_VERSAO_RC
+ FILEOS 0x40004
+ FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041604b0"
+    BEGIN
+      VALUE "CompanyName", "FTdxSDR"
+      VALUE "FileDescription", "FTdxSDR - receptor SDR com painel de radio"
+      VALUE "FileVersion", RXSDR_VERSAO
+      VALUE "ProductName", "FTdxSDR"
+      VALUE "ProductVersion", RXSDR_VERSAO
+      VALUE "OriginalFilename", "FTdxSDR.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x416, 1200
+  END
+END

@@ -1,0 +1,39 @@
+# Compila o FTdxSDR.exe no GitHub (Windows, Visual Studio 2022) e guarda o exe
+# na aba Actions. Roda so quando pedido: botao "Run workflow" na aba Actions.
+
+name: Compilar
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - name: Baixar o codigo
+        uses: actions/checkout@v5
+
+      - name: Compilar (MSVC x64, CRT estatico)
+        shell: cmd
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          if errorlevel 1 exit /b 1
+          cmake --build build --config Release
+          if errorlevel 1 exit /b 1
+
+      - name: Conferir o exe
+        shell: pwsh
+        run: |
+          $f = Get-Item build/Release/FTdxSDR.exe
+          "{0}  {1:N0} bytes  versao {2}" -f $f.Name, $f.Length, $f.VersionInfo.FileVersion
+
+      - name: Guardar o exe
+        uses: actions/upload-artifact@v5
+        with:
+          name: FTdxSDR
+          path: build/Release/FTdxSDR.exe
+          if-no-files-found: error

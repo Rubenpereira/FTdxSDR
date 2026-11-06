@@ -1,0 +1,159 @@
+FTdxSDR - programas e bibliotecas de terceiros
+==============================================
+
+O FTdxSDR segue a licenca do arquivo LICENSE.txt (autor indicado nele):
+uso livre e NAO COMERCIAL, mantendo o credito ao autor.
+
+Essa licenca vale so para o codigo do FTdxSDR. Os programas abaixo foram feitos
+por outras pessoas, vem junto na pasta apenas para facilitar o uso e continuam
+com a licenca original de cada um. O FTdxSDR conversa com os decodificadores
+externos como programas separados (entrada e saida de dados), sem juntar o
+codigo deles ao seu.
+
+O codigo-fonte de cada um esta no endereco indicado. Quando houve alguma
+mudanca para compilar ou funcionar no Windows, ela esta descrita aqui.
+
+
+DENTRO DO FTdxSDR.exe
+---------------------
+Dear ImGui (tela)              MIT               https://github.com/ocornut/imgui
+stb_image / stb_image_write    dominio publico / MIT
+                                                 https://github.com/nothings/stb
+ft8_lib (decodificador FT8/FT4) MIT              https://github.com/kgoba/ft8_lib
+   (c) 2018 Karlis Goba. Inclui o kiss_fft (BSD). Duas mudancas pequenas para
+   compilar no MSVC, descritas em third_party/ft8_lib/LEIA-ME.txt; a licenca
+   completa esta no fim deste arquivo.
+libsgp4 (orbitas, decodificador Satelites)
+                               Apache 2.0        https://github.com/dnwrnr/sgp4
+   (c) 2013 Daniel Warner. Commit c6ebb90, sem mudancas (so o CsvTleLoader
+   ficou de fora). Licenca completa em third_party/sgp4/LICENSE.txt.
+Natural Earth 1:110m (contorno do mapa-mundi) e 1:50m (mapa do Radar Aereo:
+   costa, fronteiras e divisas de estados)
+                               dominio publico   https://www.naturalearthdata.com
+adsb.lol (posicao pela internet no Radar Aereo, consulta a API publica e gratuita)
+                               rede aberta de receptores ADS-B   https://adsb.lol
+ADS-B Exchange (OPCIONAL no Radar Aereo: so com a chave da API do proprio usuario,
+   assinatura paga no RapidAPI; o FTdxSDR nao traz chave nem redistribui os dados)
+                               https://www.adsbexchange.com
+cty.dat - prefixos e entidades DXCC (coluna Pais do FT8/FT4)
+                               uso e distribuicao livres   https://www.country-files.com
+   (c) Jim Reisert AD1C. Convertido em src/ui/Ft8Paises.inc por
+   build/cty/gerar_paises.py (nomes traduzidos para o portugues).
+OurAirports (aeroportos grandes e medios do Radar Aereo)
+                               dominio publico   https://ourairports.com/data/
+Elementos orbitais (satelites.tle)
+                               baixados da Celestrak (celestrak.org), dados publicos
+
+AO LADO DO FTdxSDR.exe
+----------------------
+rtl-sdr (rtlsdr.dll, librtlsdr.dll)
+                               GPL-2.0           https://github.com/osmocom/rtl-sdr
+libusb (libusb-1.0.dll)        LGPL-2.1          https://github.com/libusb/libusb
+Microsoft Visual C++ runtime (msvcr100.dll do pthreadVC2.dll, vcruntime140.dll do rtlsdr.dll),
+   64 bits                     arquivos redistribuiveis da Microsoft (Visual C++ 2010 e 2015-2022);
+   vao junto para o rtl-sdr abrir num Windows sem o "Visual C++ Redistributable" instalado.
+pthreads-win32 (pthreadVC2.dll)
+                               LGPL-2.1          https://sourceware.org/pthreads-win32/
+
+PASTA decoders
+--------------
+dumphfdl (HFDL)                GPL-3.0           https://github.com/szpajder/dumphfdl
+dumpvdl2 (VDL2)                GPL-3.0           https://github.com/szpajder/dumpvdl2
+   Versao 2.7.0 compilada no MSYS2 (UCRT64) com tres mudancas so para o
+   Windows: "#undef I" no avlc.c (conflito com o complex.h), cabecalhos de
+   rede trocados pelos equivalentes do Windows, e a saida UDP retirada
+   (output-udp.c fora do CMakeLists.txt e do output-common.c). A decodificacao
+   nao foi alterada.
+libacars                       MIT               https://github.com/szpajder/libacars
+acarsdec (ACARS)               GPL-2.0           https://github.com/f00b4r0/acarsdec
+direwolf (APRS)                GPL-2.0           https://github.com/wb2osz/direwolf
+Dream (DRM, pasta drm)         GPL-2.0           https://sourceforge.net/projects/drm/
+   Versao 2.3 com xHE-AAC (https://github.com/wwek/dream), compilada no MSYS2
+   UCRT64 em modo console. Mudancas do RXSDR, todas no arquivo
+   dream_rxsdr.patch (pasta project-nativo/decoders_corrigidos no GitHub):
+   entrada de IQ pelo stdin e audio pelo stdout (soundstdio.cpp), estado em
+   JSON pelo stderr ("--status-socket -"), sem libpcap no Windows e a taxa
+   do codificador AAC do transmissor de teste. A decodificacao nao mudou.
+FDK-AAC 2.0.3 (pasta drm)      licenca da Fraunhofer (LICENSE-fdk-aac.txt na pasta drm)
+                                                 https://github.com/mstorsjo/fdk-aac
+SpeexDSP (pasta drm)           BSD               https://github.com/xiph/speexdsp
+AIS-catcher (AIS, pasta ais)   GPL-3.0           https://github.com/jvde-github/AIS-catcher
+dsd-fme (DMR, P25, NXDN...)    ISC / GPL-2.0 (partes)
+                                                 https://github.com/lwvmobile/dsd-fme
+   Veja tambem LICENSE-DSD.txt.
+mbelib (voz AMBE/IMBE)         ISC               https://github.com/lwvmobile/mbelib-neo
+codec2                         LGPL-2.1          https://github.com/drowe67/codec2
+osmo-tetra (tetra-rx)          AGPL-3.0          https://github.com/sq5bpf/osmo-tetra-sq5bpf
+   tetra-rx.c recebeu a chamada WSAStartup antes do socket() (#ifdef _WIN32),
+   sem a qual o TETMON nao saia pela rede no Windows.
+libosmocore                    GPL-2.0           https://gitea.osmocom.org/osmocom/libosmocore
+talloc                         LGPL-3.0          https://talloc.samba.org
+cdecoder / sdecoder (voz TETRA)
+                               codigo de referencia da ETSI (norma EN 300 395-2),
+                               direitos da ETSI  https://www.etsi.org
+liquid-dsp                     MIT               https://github.com/jgaeddert/liquid-dsp
+FFTW                           GPL-2.0           https://www.fftw.org
+libconfig                      LGPL-2.1          https://github.com/hyperrealm/libconfig
+GLib                           LGPL-2.1          https://gitlab.gnome.org/GNOME/glib
+libsndfile                     LGPL-2.1          https://github.com/libsndfile/libsndfile
+FLAC, Ogg, Vorbis, Opus        BSD               https://xiph.org
+mpg123                         LGPL-2.1          https://www.mpg123.de
+LAME                           LGPL-2.0          https://lame.sourceforge.io
+libxml2                        MIT               https://gitlab.gnome.org/GNOME/libxml2
+SQLite                         dominio publico   https://www.sqlite.org
+zlib                           zlib              https://zlib.net
+PCRE2                          BSD               https://github.com/PCRE2Project/pcre2
+libiconv, gettext (libintl)    LGPL              https://www.gnu.org/software/libiconv/
+Cygwin (cygwin1.dll e cyg*.dll)
+                               LGPL-3.0 e as licencas de cada biblioteca
+                                                 https://cygwin.com
+MinGW-w64 (libgcc, libwinpthread)
+                               GPL com excecao de runtime / MIT
+                                                 https://www.mingw-w64.org
+OpenSSL 3 (pasta ais)          Apache-2.0        https://www.openssl.org
+ZeroMQ (pasta ais)             MPL-2.0           https://zeromq.org
+libpq (pasta ais)              PostgreSQL        https://www.postgresql.org
+soxr (pasta ais)               LGPL-2.1          https://sourceforge.net/projects/soxr/
+airspy, airspyhf, hackrf (pasta ais)
+                               GPL-2.0 / BSD     https://github.com/airspy  https://github.com/greatscottgadgets/hackrf
+Microsoft Visual C++ Runtime (msvcp140, vcruntime140, msvcr100)
+                               redistribuivel da Microsoft
+
+NAO VEM JUNTO
+-------------
+SDRplay API: instale a versao oficial em https://www.sdrplay.com/api/
+
+
+Os textos completos das licencas GPL, LGPL e AGPL estao em
+https://www.gnu.org/licenses/
+
+
+LICENCA DO ft8_lib
+------------------
+MIT License
+
+Copyright (c) 2018 Kārlis Goba
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+------------------------------------------------------------------------------
+Zadig 2.9 (pasta Drivers) - instalador do driver WinUSB, usado sem modificacao
+(c) Pete Batard / Akeo Consulting - GNU GPL v3
+Codigo-fonte e licenca: https://github.com/pbatard/libwdi  -  https://zadig.akeo.ie

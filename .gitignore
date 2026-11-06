@@ -1,0 +1,76 @@
+# ============================================================================
+#  FTdxSDR - o que vai (e o que NUNCA vai) para o GitHub
+#
+#  A regra e ao contrario do normal: primeiro IGNORA TUDO, depois libera
+#  item por item o que e seguro publicar. Qualquer arquivo novo que aparecer
+#  na pasta fica de fora por padrao e nada vaza por acidente.
+#
+#  NUNCA sobem: pronto\ (FTdxSDR.ini com IP/porta das caixas, gravacoes,
+#  capturas, run.log), build\, Output\ (o .zip vai na release), ESTADO_ATUAL.md
+#  (anotacoes com a rede de casa), fotos de referencia (ftdx101mp*.jpg) e o
+#  manual da Yaesu (*.pdf), que sao de terceiros.
+#
+#  Para publicar algo novo, acrescente uma linha com "!" na frente.
+# ============================================================================
+
+# ---- 1) ignora tudo que esta na raiz -------------------------------------
+/*
+
+# ---- 2) libera os arquivos soltos da raiz --------------------------------
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/CHANGELOG.md
+!/LICENSE.txt
+!/LICENSE-DSD.txt
+!/TERCEIROS.txt
+!/LEIA-ME.txt
+!/FTdxSDR.png
+# video e animacao do README
+!/FTdxSDR.mp4
+!/FTdxSDR.gif
+# memorias que acompanham o pacote: so frequencias publicas
+!/bookmarks.json
+!/dsd_arquivos.txt
+!/CMakeLists.txt
+
+# scripts (nao tem senha nem IP da rede)
+!/ABRIR.bat
+!/COMPILAR.bat
+!/GERAR_PACOTE.bat
+
+# compilacao automatica no GitHub (e a assinatura SignPath)
+!/.github/
+
+# ---- 3) codigo-fonte e bibliotecas ---------------------------------------
+!/src/
+!/assets/
+!/third_party/
+/third_party/imgui/examples/
+/third_party/imgui/docs/
+/third_party/imgui/.github/
+
+# ---- 4) mesmo dentro das pastas liberadas, isto nunca sobe ----------------
+*.ini
+*.log
+*.wav
+*.pedido
+*.bak
+*.bak_*
+*.tmp
+Capturas/
+Gravacoes/
+Decodificados/
+
+# ---- lista de frequencias do autor (so referencia, fica neste PC) --------
+/Lista Freq/
+*.dbf
+*.ods
+*.pdf
+ftdx101mp*
+
+# ---- 5) ferramentas do autor para publicar: NUNCA sobem -------------------
+# (fica no fim de proposito: estas linhas vencem qualquer "!" acima)
+/SUBIR_GITHUB.bat
+/PUBLICAR_RELEASE.bat
+/publicar_release.ps1
