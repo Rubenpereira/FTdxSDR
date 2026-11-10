@@ -6,6 +6,6 @@
 
 // A versao do programa: mude AQUI (e no CMakeLists.txt). O rxsdr.rc (as
 // propriedades do FTdxSDR.exe) e o GERAR_PACOTE.bat leem daqui.
-#define RXSDR_VERSAO     "1.0.0"
-#define RXSDR_VERSAO_W   L"1.0.0"
-#define RXSDR_VERSAO_RC  1,0,0,0
+#define RXSDR_VERSAO     "1.1.0"
+#define RXSDR_VERSAO_W   L"1.1.0"
+#define RXSDR_VERSAO_RC  1,1,0,0

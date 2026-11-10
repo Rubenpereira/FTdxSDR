@@ -1,5 +1,13 @@
 # FTdxSDR - histórico
 
+## 1.1.0 (10/11/2026)
+- Dois aparelhos: o VFO-B pode ter o seu próprio dongle (RTL-SDR, RTL-TCP ou SDRplay), recebendo ao mesmo tempo
+  que o VFO-A - por exemplo um RTL-TCP em HF e outro em VHF. CONFIGURAÇÃO > VFO-B (segundo aparelho): tipo,
+  IP e porta (ou o dongle USB), Conectar. O áudio dos dois toca junto (padrão) ou só o do VFO selecionado.
+- Volume, RF e squelch de cada VFO nos botões dele: o MAIN AF-RF/SQL controla o VFO-A e o SUB AF-RF/SQL controla o VFO-B.
+- O escopo mostra o aparelho do VFO que se ouve (as teclas MAIN / SUB escolhem); o S-meter do SUB lê o aparelho dele. S-meter, squelch e AUTO da cachoeira de cada VFO no aparelho dele.
+- Desligando a caixa "VFO-B com aparelho próprio" tudo volta a ser como antes (um aparelho só).
+
 ## 1.0.0 (06/11/2026)
 - Primeira versão. Mesmo motor do SDR990S 1.2.8 (RTL-SDR, RTL-TCP, SDRplay, todos os
   decodificadores, Radar Aéreo, Satélites), com o painel novo no estilo do FTDX-101MP:

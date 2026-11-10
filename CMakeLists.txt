@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(FTdxSDR VERSION 1.0.0 LANGUAGES C CXX)
+project(FTdxSDR VERSION 1.1.0 LANGUAGES C CXX)
 
 # ---------------------------------------------------------------------------
 #  FTdxSDR - receptor SDR com painel de radio (Windows 7 SP1 ate 11)

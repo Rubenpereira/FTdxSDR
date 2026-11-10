@@ -422,7 +422,9 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int)
 
     Radio radio;
     radio.iniciar();
-    auto ui = std::make_unique<Ui>(radio, g_dev, f, s);
+    Radio radioB("b_");          // FTdxSDR: o aparelho do VFO-B (so liga com "VFO-B com aparelho proprio")
+    radioB.iniciar();
+    auto ui = std::make_unique<Ui>(radio, radioB, g_dev, f, s);
     // Liga sozinho se estava ligado ao fechar
     if (c.flag("ligado", false)) { std::string e; radio.ligar(true, e); }
 
@@ -507,6 +509,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR, int)
     ui->salvarEstado();
     ui.reset();
     c.salvar(true);                 // grava antes de soltar o aparelho
+    radioB.encerrar();
     radio.encerrar();
     Logger::info("Radio encerrado");
     c.salvar(true);

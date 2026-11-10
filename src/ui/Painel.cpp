@@ -1349,8 +1349,8 @@ void Ui::aviso(const std::string& t, double seg) { avisoPainel_ = t; avisoAte_ =
 void Ui::sincronizarAtivo()
 {
     Receptor& R = rx_[ativo_];
-    R.f = r_.vfo();
-    R.modo = r_.modo();
+    R.f = r_->vfo();
+    R.modo = r_->modo();
     // o squelch automatico (VOX) mexe no sql_ direto: guarda no receptor
     if (sqlAplicado_ > -900 && sql_ != sqlAplicado_) R.sql = sql_;
 }
@@ -1365,26 +1365,26 @@ void Ui::aplicarReceptor()
     nb_ = R.nb1 ? nbNivel_ : 0.f;
     nr_ = R.nr1 ? nrNivel_ : 0.f;
     nrEsp_ = R.nr2;
-    r_.setNb2(R.nb2, nb2Nivel_);
+    r_->setNb2(R.nb2, nb2Nivel_);
     AjustesDsp::g().agc = R.agcOff ? 0 : std::clamp(R.agc, 1, 3);
     // RF: so manda ao dongle quando o botao mexeu (a CONFIGURACAO tambem ajusta)
     if (R.rf != rfAplicado_) {
         rfAplicado_ = R.rf;
         ganhoRf_ = 100.f - R.rf;
-        r_.setGanho((int)std::lround(4.96f * R.rf));
+        r_->setGanho((int)std::lround(4.96f * R.rf));
     }
-    r_.setGanhoExtraDb(-6.f * att_);
-    r_.setPreamp(pamp_);
+    r_->setGanhoExtraDb(-6.f * att_);
+    r_->setPreamp(pamp_);
     // CW: SHIFT desloca a escuta e compensa no tom - a batida continua no PITCH
-    const int g = grupoModo(r_.modo());
+    const int g = grupoModo(r_->modo());
     int shift = 0;
     if (g == 1) shift = (int)std::lround(filLo_[1][R.fil] / 10.f) * 10;
     AjustesDsp::g().cwTomHz = std::clamp(cwPitch_ + (float)shift, 250.f, 1400.f);
-    r_.setRit((R.ritOn ? R.rit : 0) + shift);
+    r_->setRit((R.ritOn ? R.rit : 0) + shift);
     // largura mexida fora do painel (arrasto da borda no espectro, decoders)
-    if (g != grupoAplicado_) { grupoAplicado_ = g; bwAplicado_ = r_.banda(); }
-    else if (r_.banda() != bwAplicado_) {
-        const int bw = r_.banda();
+    if (g != grupoAplicado_) { grupoAplicado_ = g; bwAplicado_ = r_->banda(); }
+    else if (r_->banda() != bwAplicado_) {
+        const int bw = r_->banda();
         filHi_[g][R.fil] = (float)(g == 2 ? bw / 2 : bw);
         bwAplicado_ = bw;
     }
@@ -1393,14 +1393,14 @@ void Ui::aplicarReceptor()
 void Ui::aplicarFiltro()
 {
     const Receptor& R = rx_[ativo_];
-    const int g = grupoModo(r_.modo());
+    const int g = grupoModo(r_->modo());
     const float hi = filHi_[g][R.fil], lo = filLo_[g][R.fil];
     int bw = (int)std::lround(hi);
     int loCut = 250;
     if (g == 0) loCut = (int)std::lround(lo);
     else if (g == 2) { bw = (int)std::lround(hi * 2); loCut = (int)std::lround(lo); }
     bw = std::max(50, bw);
-    r_.setBanda(bw);
+    r_->setBanda(bw);
     AjustesDsp::g().loCutHz = std::clamp(loCut, 0, 1500);
     bwAplicado_ = bw; grupoAplicado_ = g;
 }
@@ -1409,9 +1409,28 @@ void Ui::ativar(int i)
 {
     if (i == ativo_ || i < 0 || i > 1) return;
     sincronizarAtivo();
+    if (duas_) {
+        // FTdxSDR (dois aparelhos): o som e os botoes passam para o aparelho do outro VFO.
+        // O decodificador roda no aparelho ouvido: fecha antes de trocar.
+        if (decTipo_ != Decoders::NENHUM && r_->decoders().tipo() != Decoders::NENHUM) {
+            escolherDecoder(Decoders::NENHUM, false);
+            aviso("Decodificador fechado: ele roda no VFO ouvido", 3.0);
+        }
+        r_->setMedirCanal(false);
+        r_ = (i == 0) ? ra_ : rb_;
+        r_->setMedirCanal(true);
+        std::swap(fft_, fftO_);
+        std::swap(suave_, suaveO_);
+        quadrosOutro_ = 0;
+        picoHold_.assign(suave_.size(), -200.f);
+        ajPrimeiro_ = true; ajOutroPrimeiro_ = true;
+        rfOutroAplicado_ = -1.f;
+        if (!r_->aoVivo()) { centroMostrado_ = r_->centro(); taxaMostrada_ = r_->taxa(); }
+        autoCachoeira();          // HF x VHF: o piso de cada aparelho e outro
+    }
     ativo_ = i;
     const Receptor& R = rx_[i];
-    if (R.modo != r_.modo()) r_.setModo(R.modo);
+    if (R.modo != r_->modo()) r_->setModo(R.modo);
     sintonizar(R.f, false);
     rfAplicado_ = -1;             // o RF deste receptor vale agora
     aplicarFiltro();
@@ -1420,7 +1439,7 @@ void Ui::ativar(int i)
 
 void Ui::mudarModoPainel(const std::string& m)
 {
-    if (m != r_.modo()) { r_.setModo(m); muteAte_ = agora() + 0.25; }
+    if (m != r_->modo()) { r_->setModo(m); muteAte_ = agora() + 0.25; }
     rx_[ativo_].modo = m;
     aplicarFiltro();
     if (zoom_ > 0) centrarParaZoom(true);
@@ -1463,7 +1482,7 @@ void Ui::mudarFreqRx(int rx, int64_t d)
     if (rx < 0 || rx > 1 || d == 0) return;
     Receptor& R = rx_[rx];
     if (R.lock || R.memModo) return;
-    const uint64_t f = rx == ativo_ ? r_.vfo() : R.f;
+    const uint64_t f = rx == ativo_ ? r_->vfo() : R.f;
     const int64_t nf = (int64_t)f + d;
     if (nf < 1000 || nf > 2000000000LL) return;
     if (rx == ativo_) sintonizar((uint64_t)nf, false);
@@ -1481,7 +1500,7 @@ void Ui::trocarMainSub()
     std::swap(rx_[0].fil, rx_[1].fil);
     std::swap(rx_[0].memModo, rx_[1].memModo);
     std::swap(rx_[0].memCanal, rx_[1].memCanal);
-    r_.setModo(rx_[ativo_].modo);
+    r_->setModo(rx_[ativo_].modo);
     sintonizar(rx_[ativo_].f, false);
     aplicarFiltro();
     muteAte_ = agora() + 0.25;
@@ -1502,7 +1521,7 @@ void Ui::sintonizarRx(int i, int64_t delta)
         }
         return;
     }
-    const std::string md = (i == ativo_) ? r_.modo() : R.modo;
+    const std::string md = (i == ativo_) ? r_->modo() : R.modo;
     const int g = grupoModo(md);
     int64_t passo = R.fine ? 1 : (g == 2 ? 100 : 10);
     if (g == 3) passo = R.fine ? 10 : 500;
@@ -1512,11 +1531,11 @@ void Ui::sintonizarRx(int i, int64_t delta)
     auto mover = [&](int k, int64_t d) {
         Receptor& X = rx_[k];
         if (k == ativo_) {
-            const int64_t nf = std::max<int64_t>(1000, (int64_t)r_.vfo() + d);
+            const int64_t nf = std::max<int64_t>(1000, (int64_t)r_->vfo() + d);
             sintonizar((uint64_t)nf, false);
             X.f = (uint64_t)nf;
-            if (modoCentro_ && std::llabs((int64_t)r_.centro() - nf) > (int64_t)(r_.taxa() / (1.0 + zoom_) * 0.12))
-                r_.centralizar(r_.centroSemDc((uint64_t)nf));
+            if (modoCentro_ && std::llabs((int64_t)r_->centro() - nf) > (int64_t)(r_->taxa() / (1.0 + zoom_) * 0.12))
+                r_->centralizar(r_->centroSemDc((uint64_t)nf));
         } else {
             X.f = (uint64_t)std::max<int64_t>(1000, (int64_t)X.f + d);
         }
@@ -1530,9 +1549,9 @@ void Ui::irBanda(int b)
     if (b < 0 || b >= kNB) return;
     Receptor& R = rx_[ativo_];
     if ((int)bandaMem_.size() < kNB) bandaMem_.resize(kNB, Rapida{0, ""});
-    const uint64_t f = r_.vfo();       // guarda onde estava, se estava numa banda
+    const uint64_t f = r_->vfo();       // guarda onde estava, se estava numa banda
     for (int k = 0; k < kNB; ++k)
-        if (f >= kBandasHam[k].lo && f <= kBandasHam[k].hi) bandaMem_[k] = {f, r_.modo()};
+        if (f >= kBandasHam[k].lo && f <= kBandasHam[k].hi) bandaMem_[k] = {f, r_->modo()};
     R.memModo = false;
     const Rapida& m = bandaMem_[b];
     const uint64_t alvo = m.f ? m.f : kBandasHam[b].padrao;
@@ -1564,12 +1583,12 @@ void Ui::confirmarEntrada()
 void Ui::cwTune()
 {
     const int nb = (int)fft_.bins.size();
-    if (nb < 16 || !r_.aoVivo() || suave_.size() != (size_t)nb) { aviso("Sem sinal para sintonizar"); return; }
-    const std::string m = r_.modo();
+    if (nb < 16 || !r_->aoVivo() || suave_.size() != (size_t)nb) { aviso("Sem sinal para sintonizar"); return; }
+    const std::string m = r_->modo();
     if (m == "USB" || m == "LSB") { aviso("CW T.: use em CW, AM ou FM"); return; }
-    const double sr = fft_.taxa ? fft_.taxa : r_.taxa();
-    const double vfo = (double)r_.vfo();
-    const double janela = (m == "CW") ? 800.0 : std::max(1500.0, r_.banda() * 0.6);
+    const double sr = fft_.taxa ? fft_.taxa : r_->taxa();
+    const double vfo = (double)r_->vfo();
+    const double janela = (m == "CW") ? 800.0 : std::max(1500.0, r_->banda() * 0.6);
     auto bin = [&](double f) { return (int)std::lround((f - (double)fft_.centro) / sr * nb + nb / 2.0); };
     const int a = std::max(1, bin(vfo - janela)), b = std::min(nb - 2, bin(vfo + janela));
     if (b <= a) return;
@@ -1589,8 +1608,8 @@ void Ui::cwTune()
 
 void Ui::falarFrequencia(int i)
 {
-    const uint64_t f = (i == ativo_) ? r_.vfo() : rx_[i].f;
-    const std::string md = (i == ativo_) ? r_.modo() : rx_[i].modo;
+    const uint64_t f = (i == ativo_) ? r_->vfo() : rx_[i].f;
+    const std::string md = (i == ativo_) ? r_->modo() : rx_[i].modo;
     const std::string s = fmtFreqLcd(f);
     std::wstring w;
     for (char c : s) {
@@ -1619,7 +1638,7 @@ void Ui::tocarUltimaGravacao()
         if (!nome.empty()) arq = pasta + nome;
     }
     if (arq.empty()) { aviso("Nenhuma gravação ainda (REC grava)"); return; }
-    if (r_.som().gravando()) { aviso("Pare a gravação antes (STOP)"); return; }
+    if (r_->som().gravando()) { aviso("Pare a gravação antes (STOP)"); return; }
     PlaySoundA(arq.c_str(), nullptr, SND_FILENAME | SND_ASYNC | SND_NODEFAULT);
     aviso("PLAY: " + arq.substr(arq.find_last_of('\\') + 1), 4);
 }
@@ -1672,7 +1691,7 @@ void Ui::carregarPainel()
         if (R.f < 1000) R.f = 7100000;
         if (R.modo.empty()) R.modo = "LSB";
     }
-    rx_[0].f = r_.vfo(); rx_[0].modo = r_.modo();      // o MAIN e o que o radio tinha
+    rx_[0].f = r_->vfo(); rx_[0].modo = r_->modo();      // o MAIN e o que o radio tinha
     ativo_ = 0;
     txVfo_ = (int)std::clamp(c.num("p_tx", 0), 0LL, 1LL);
     att_ = (int)std::clamp(c.num("p_att", 0), 0LL, 3LL);
@@ -1780,11 +1799,11 @@ void Ui::telaCheia()
     const Receptor& O = rx_[1 - ativo_];
     char b[160];
     texto(f_.painel, 11.f, 12, 6, ativo_ == 0 ? P_BRANCO : P_AMARELO, ativo_ == 0 ? "MAIN" : "SUB");
-    texto(f_.painel, 11.f, 70, 6, P_BRANCO, r_.modo().c_str());
-    texto(f_.lcd, 26.f, 130, 2, r_.ligado() ? P_BRANCO : P_APAGADO, fmtFreqLcd(r_.vfo()).c_str());
+    texto(f_.painel, 11.f, 70, 6, P_BRANCO, r_->modo().c_str());
+    texto(f_.lcd, 26.f, 130, 2, r_->ligado() ? P_BRANCO : P_APAGADO, fmtFreqLcd(r_->vfo()).c_str());
     std::snprintf(b, sizeof b, "%s  %s  %s", ativo_ == 0 ? "SUB" : "MAIN", O.modo.c_str(), fmtFreqLcd(O.f).c_str());
     texto(f_.painel, 9.f, 420, 10, IM_COL32(0xb8, 0xc0, 0xcc, 255), b);
-    std::snprintf(b, sizeof b, "S-meter %.0f dB   SPAN %.0fk   %s", peakDb_, r_.taxa() / (1.0 + zoom_) / 1000.0, modoCentro_ ? "CENTER" : "FIXED");
+    std::snprintf(b, sizeof b, "S-meter %.0f dB   SPAN %.0fk   %s", peakDb_, r_->taxa() / (1.0 + zoom_) / 1000.0, modoCentro_ ? "CENTER" : "FIXED");
     texto(f_.painel, 9.f, 700, 10, P_CIANO, b);
     if (tecla("kScpVolta", "VOLTAR AO PAINEL  (ESC)", 1290, 5, 200, 20, 3, nullptr, "Volta ao painel do rádio")) scp_ = 0;
     escopo(6, 32, kLW - 12, alt - 38);
@@ -1841,9 +1860,9 @@ void Ui::escopoTela(float sx, float sy, float sw, float shh, float& frac, const 
             dl->AddTriangleFilled(ImVec2(xo - 4 * u, sy), ImVec2(xo + 4 * u, sy), ImVec2(xo, sy + 5 * u), co);
         }
         const Receptor& R = rx_[ativo_];
-        if ((R.nch || R.bef) && (r_.modo() == "USB" || r_.modo() == "LSB")) {
+        if ((R.nch || R.bef) && (r_->modo() == "USB" || r_->modo() == "LSB")) {
             const double nh = 150.0 * std::pow(3500.0 / 150.0, std::clamp(R.notch, 0.f, 1.f));
-            const double fn = r_.modo() == "USB" ? (double)r_.vfo() + nh : (double)r_.vfo() - nh;
+            const double fn = r_->modo() == "USB" ? (double)r_->vfo() + nh : (double)r_->vfo() - nh;
             const float xn = (float)hzParaX(fn, xm, wm);
             dl->AddLine(ImVec2(xn, sy + 5 * u), ImVec2(xn, sy + hEsp), alfa(P_CIANO, 200), R.bef ? 3.f * u : 1.5f * u);
             dl->AddTriangleFilled(ImVec2(xn - 4 * u, sy), ImVec2(xn + 4 * u, sy), ImVec2(xn, sy + 5 * u), P_CIANO);
@@ -1898,7 +1917,7 @@ void Ui::areaBaixo(float x, float y, float w, float h)
     if (bt("MUTE", 56, R.mute, IM_COL32(0xff, 0x50, 0x50, 255))) R.mute = !R.mute;
     bx += 8 * u;
     {   // BW: largura do filtro do receptor ouvido (o mesmo do knob HI/SHIFT - LO/WIDTH)
-        const int g = grupoModo(r_.modo());
+        const int g = grupoModo(r_->modo());
         float& hi = filHi_[g][R.fil];
         const float lo = filLo_[g][R.fil];
         const float bwAtual = g == 2 ? hi * 2.f : hi;          // AM: as duas bandas laterais
@@ -1923,7 +1942,7 @@ void Ui::areaBaixo(float x, float y, float w, float h)
         if (sobre && ImGui::GetIO().MouseWheel != 0) aplicarBw(bwAtual + (ImGui::GetIO().MouseWheel > 0 ? passo[g] : -passo[g]));
         if (sobre) ImGui::SetTooltip("BW: largura do filtro (%s  -  FIL %s)\nClique: lista de larguras.  Roda do mouse: ajusta.\n"
                                      "O mesmo do knob HI/SHIFT · LO/WIDTH (coluna MAIN RECEIVER) e da borda do filtro no espectro.",
-                                     r_.modo().c_str(), kNomesFil[R.fil]);
+                                     r_->modo().c_str(), kNomesFil[R.fil]);
         if (ImGui::BeginPopup("##bw990")) {
             static const float kSsb[] = {1800, 2100, 2400, 2700, 3000, 3600, 4000, 5000};
             static const float kCw[] = {50, 100, 200, 300, 500, 800, 1000, 2000};
@@ -1932,7 +1951,7 @@ void Ui::areaBaixo(float x, float y, float w, float h)
             static const float kWfm[] = {100000, 150000, 180000, 200000, 250000};
             const float* l = g == 0 ? kSsb : g == 1 ? kCw : g == 2 ? kAm : g == 3 ? kFm : kWfm;
             const int n = g == 0 ? 8 : g == 1 ? 8 : g == 2 ? 6 : g == 3 ? 7 : 5;
-            ImGui::TextDisabled("Largura (%s, FIL %s)", r_.modo().c_str(), kNomesFil[R.fil]);
+            ImGui::TextDisabled("Largura (%s, FIL %s)", r_->modo().c_str(), kNomesFil[R.fil]);
             for (int i = 0; i < n; ++i) {
                 const std::string t = fmtBwK(l[i]) + (l[i] < 1000 ? " Hz" : "Hz");
                 if (ImGui::Selectable(t.c_str(), std::fabs(bwAtual - l[i]) < 1.f)) aplicarBw(l[i]);
@@ -1963,8 +1982,8 @@ void Ui::areaBaixo(float x, float y, float w, float h)
     {
         SYSTEMTIME st; GetSystemTime(&st);
         char t[96];
-        std::snprintf(t, sizeof t, "%s  %s  %s      %02d:%02d UTC", ativo_ == 0 ? "MAIN" : "SUB", r_.modo().c_str(),
-                      fmtFreqLcd(r_.vfo()).c_str(), st.wHour, st.wMinute);
+        std::snprintf(t, sizeof t, "%s  %s  %s      %02d:%02d UTC", ativo_ == 0 ? "MAIN" : "SUB", r_->modo().c_str(),
+                      fmtFreqLcd(r_->vfo()).c_str(), st.wHour, st.wMinute);
         ImGui::PushFont(f_.freqMouse ? f_.freqMouse : f_.negrito);
         const ImVec2 ts = ImGui::CalcTextSize(t);
         if (x + w - ts.x - 12 * u > bx) dl->AddText(ImVec2(x + w - ts.x - 12 * u, y + (hb - ts.y) * 0.5f), IM_COL32(0x40, 0xff, 0x70, 255), t);
@@ -2013,11 +2032,11 @@ void Ui::painel()
     aplicarReceptor();
     if (sleepAte_ > 0 && agora() > sleepAte_) {
         sleepAte_ = 0;
-        std::string e; r_.ligar(false, e);
+        std::string e; r_->ligar(false, e);
         aviso("TIMER: rádio desligado", 5);
     }
     {   // S-meter do outro receptor: lido no espectro, no passa-faixa dele
-        const float alvo = (r_.ligado() && r_.aoVivo()) ? ponteiroRx(1 - ativo_) : 0.01f;
+        const float alvo = (r_->ligado() && r_->aoVivo()) ? ponteiroRx(1 - ativo_) : 0.01f;
         const float dt = std::max(0.001f, io.DeltaTime);
         const float a = alvo > smOutro_ ? 1.f - std::pow(1.f - 0.28f, dt * 60.f) : 1.f - std::exp(-dt / std::max(0.05f, smRetorno_));
         smOutro_ += (alvo - smOutro_) * a;
@@ -2226,7 +2245,7 @@ void Ui::chassi()
 void Ui::colunaEsquerda()
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const bool lig = r_.ligado();
+    const bool lig = r_->ligado();
     texto(f_.painel, 6.6f, 40, 38, P_ROTULO, "ON/OFF", 0.5f);
     {   // aro azul em volta da tecla (aceso com o radio ligado)
         const ImU32 azul = lig ? IM_COL32(0x2e, 0x86, 0xff, 255) : IM_COL32(0x1c, 0x3a, 0x70, 255);
@@ -2281,10 +2300,10 @@ void Ui::faixaRx(int rx, double& f0, double& f1) const
 {
     const Receptor& R = rx_[rx];
     const bool at = rx == ativo_;
-    const double v = at ? (double)r_.vfo() : (double)R.f;
-    const std::string m = at ? r_.modo() : R.modo;
+    const double v = at ? (double)r_->vfo() : (double)R.f;
+    const std::string m = at ? r_->modo() : R.modo;
     double bw;
-    if (at) bw = r_.banda();
+    if (at) bw = r_->banda();
     else {
         const int g = grupoModo(m);
         bw = g == 2 ? filHi_[g][R.fil] * 2.0 : filHi_[g][R.fil];
@@ -2299,11 +2318,15 @@ void Ui::faixaRx(int rx, double& f0, double& f1) const
 // do S-meter do Ui.cpp, no passa-faixa dele). Fora da faixa do dongle: zero.
 float Ui::ponteiroRx(int rx) const
 {
+    // dois aparelhos: o VFO que nao se ouve e lido no espectro do aparelho dele
+    const bool deOutro = duas_ && rx != ativo_;
+    const QuadroFft& fft_ = deOutro ? fftO_ : this->fft_;
+    const std::vector<float>& suave_ = deOutro ? suaveO_ : this->suave_;
     const int nb = (int)suave_.size();
     if (nb < 16 || fft_.bins.size() != (size_t)nb) return 0.05f;
     double f0, f1;
     faixaRx(rx, f0, f1);
-    const double sr = fft_.taxa ? fft_.taxa : r_.taxa();
+    const double sr = fft_.taxa ? fft_.taxa : r_->taxa();
     const double c0 = (double)fft_.centro - sr / 2, c1 = (double)fft_.centro + sr / 2;
     if (f1 < c0 || f0 > c1) return 0.02f;
     auto bin = [&](double f) { return std::clamp((int)std::lround((f - (double)fft_.centro) / sr * nb + nb / 2.0), 0, nb - 1); };
@@ -2318,7 +2341,7 @@ float Ui::ponteiroRx(int rx) const
     pk = (pk == -200) ? -120.f : std::min(0.f, pk + 15.f);
     const auto& c = Config::instance();
     const double v = (f0 + f1) * 0.5;
-    const bool hf = r_.qAtivo() || v < 30e6;
+    const bool hf = r_->qAtivo() || v < 30e6;
     const float s9Ref = (float)(hf ? c.num("s9_hf", -94) : c.num("s9_vhf", -93));
     float dbCal = pk - (s9Ref - (hf ? -94.f : -93.f));
     const float alvo = -11.73f;          // o piso do Ui.cpp (tabela rms->dB com hfEmpty = 36)
@@ -2335,7 +2358,7 @@ float Ui::ponteiroRx(int rx) const
 void Ui::medidorFt(float x, float y, float w, float h, int rx)
 {
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    const bool lig = r_.ligado();
+    const bool lig = r_->ligado();
     // faixa do titulo
     dl->AddRectFilledMultiColor(M.p(x + 24, y), M.p(x + w - 24, y + 9), IM_COL32(0x2a, 0x5c, 0xc8, 255), IM_COL32(0x2a, 0x5c, 0xc8, 255),
                                 IM_COL32(0x14, 0x30, 0x80, 255), IM_COL32(0x14, 0x30, 0x80, 255));
@@ -2449,8 +2472,8 @@ void Ui::caixaFiltro(float x, float y, float w, float h, int rx)
     auto fx = [&](double f) { return (float)(x + 3 + (f - (meio - span / 2)) / span * (w - 6)); };
     dl->PushClipRect(M.p(x + 1, y + 1), M.p(x + w - 1, y + h - 1), true);
     const int nb = (int)suave_.size();
-    if (r_.ligado() && nb > 16 && fft_.bins.size() == (size_t)nb) {
-        const double sr = fft_.taxa ? fft_.taxa : r_.taxa();
+    if (r_->ligado() && nb > 16 && fft_.bins.size() == (size_t)nb) {
+        const double sr = fft_.taxa ? fft_.taxa : r_->taxa();
         const float range = std::clamp(wfRange_, 10.f, 120.f);
         std::vector<ImVec2> pts;
         const int n = 48;
@@ -2466,16 +2489,16 @@ void Ui::caixaFiltro(float x, float y, float w, float h, int rx)
     }
     // o filtro (trapezio vermelho)
     const float xa = fx(f0), xb = fx(f1), sl = std::min(4.f, (xb - xa) * 0.2f);
-    const ImU32 vm = r_.ligado() ? IM_COL32(0xff, 0x3c, 0x30, 255) : IM_COL32(0x80, 0x30, 0x30, 255);
+    const ImU32 vm = r_->ligado() ? IM_COL32(0xff, 0x3c, 0x30, 255) : IM_COL32(0x80, 0x30, 0x30, 255);
     dl->AddLine(M.p(xa, y + h - 4), M.p(xa + sl, y + 9), vm, M.d(1.2f));
     dl->AddLine(M.p(xa + sl, y + 9), M.p(xb - sl, y + 9), vm, M.d(1.2f));
     dl->AddLine(M.p(xb - sl, y + 9), M.p(xb, y + h - 4), vm, M.d(1.2f));
     const Receptor& R = rx_[rx];
     if (R.nch || R.bef) {      // NOTCH / CONT (so faz sentido em SSB)
-        const std::string m = rx == ativo_ ? r_.modo() : R.modo;
+        const std::string m = rx == ativo_ ? r_->modo() : R.modo;
         auto fNotch = [&](float t) {
             const double nh = 150.0 * std::pow(3500.0 / 150.0, std::clamp(t, 0.f, 1.f));
-            return m == "LSB" ? (rx == ativo_ ? (double)r_.vfo() : (double)R.f) - nh : (rx == ativo_ ? (double)r_.vfo() : (double)R.f) + nh;
+            return m == "LSB" ? (rx == ativo_ ? (double)r_->vfo() : (double)R.f) - nh : (rx == ativo_ ? (double)r_->vfo() : (double)R.f) + nh;
         };
         if (R.nch) { const float xn = fx(fNotch(R.notch)); dl->AddLine(M.p(xn, y + 9), M.p(xn, y + h - 4), P_CIANO, M.d(1.f)); }
         if (R.bef) { const float xn = fx(fNotch(R.cont)); dl->AddLine(M.p(xn, y + 9), M.p(xn, y + h - 4), P_AMBAR, M.d(2.f)); }
@@ -2490,9 +2513,9 @@ void Ui::ladoVfo(float x, float y, float w, float h, int rx)
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const Receptor& R = rx_[rx];
     const bool at = rx == ativo_;
-    const bool lig = r_.ligado();
-    const uint64_t f = at ? r_.vfo() : R.f;
-    const std::string md = at ? r_.modo() : R.modo;
+    const bool lig = r_->ligado();
+    const uint64_t f = at ? r_->vfo() : R.f;
+    const std::string md = at ? r_->modo() : R.modo;
     char b[64];
     if (at) dl->AddRectFilledMultiColor(M.p(x, y), M.p(x + w, y + h), IM_COL32(0x10, 0x20, 0x48, 160), IM_COL32(0x10, 0x20, 0x48, 160),
                                         IM_COL32(0x10, 0x20, 0x48, 0), IM_COL32(0x10, 0x20, 0x48, 0));
@@ -2510,7 +2533,7 @@ void Ui::ladoVfo(float x, float y, float w, float h, int rx)
             texto(f_.painel, 5.2f, xi, y + 2.5f, c, t);
             xi += larguraTexto(f_.painel, 5.2f, t) + 4.f;
         };
-        const bool busy = lig && r_.aoVivo() && (at ? (sqlAberto_ && (sql_ > -90 || smAtual_ > 0.22f)) : smOutro_ > 0.30f);
+        const bool busy = lig && r_->aoVivo() && (at ? (sqlAberto_ && (sql_ > -90 || smAtual_ > 0.22f)) : smOutro_ > 0.30f);
         if (busy) ind("BUSY", P_VERDE);
         if (txVfo_ == rx && txVfo_ != ativo_) ind("TX", P_VERMELHO);
         if (R.lock) ind("LOCK", P_VERMELHO);
@@ -2560,13 +2583,13 @@ void Ui::celulasInfo(float x, float y, float w, float h, int rx)
     const float cw = w / 5.f;
     const char* cab[5] = {"ANT", "ATT", "IPO", "R.FIL", "AGC"};
     char val[5][24];
-    std::snprintf(val[0], 24, "%s", !r_.temDispositivo() ? "--" : r_.tipo() == "rtltcp" ? "TCP" : r_.tipo() == "sdrplay" ? "RSP" : "RTL");
+    std::snprintf(val[0], 24, "%s", !r_->temDispositivo() ? "--" : r_->tipo() == "rtltcp" ? "TCP" : r_->tipo() == "sdrplay" ? "RSP" : "RTL");
     if (att_) std::snprintf(val[1], 24, "%ddB", att_ * 6); else std::snprintf(val[1], 24, "OFF");
     std::snprintf(val[2], 24, "%s", pamp_ == 0 ? "IPO" : pamp_ == 1 ? "AMP1" : "AMP2");
     {
-        const std::string m = rx == ativo_ ? r_.modo() : R.modo;
+        const std::string m = rx == ativo_ ? r_->modo() : R.modo;
         const int g = grupoModo(m);
-        const float bw = rx == ativo_ ? (float)r_.banda() : (g == 2 ? filHi_[g][R.fil] * 2.f : filHi_[g][R.fil]);
+        const float bw = rx == ativo_ ? (float)r_->banda() : (g == 2 ? filHi_[g][R.fil] * 2.f : filHi_[g][R.fil]);
         if (bw >= 1000) std::snprintf(val[3], 24, bw >= 10000 ? "%.0fk" : "%.1fk", bw / 1000.f);
         else std::snprintf(val[3], 24, "%.0f", bw);
         std::snprintf(val[3] + std::strlen(val[3]), 24 - std::strlen(val[3]), " %s", kNomesFil[R.fil]);
@@ -2612,7 +2635,7 @@ void Ui::telaTft()
                                 IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 0));
     const float x0 = 92, y0 = 44, x1 = 680, y1 = 444;
     dl->AddRectFilled(M.p(x0, y0), M.p(x1, y1), P_LCD, M.d(2));
-    const bool lig = r_.ligado();
+    const bool lig = r_->ligado();
     float yy = y0 + 4;
     if (!expand_) {
         for (int i = 0; i < 2; ++i) {
@@ -2633,7 +2656,7 @@ void Ui::telaTft()
         texto(f_.painel, 7.f, x0 + 6, yy + 1, P_BRANCO, ativo_ == 0 ? "MAIN" : "SUB");
         const int v = (int)std::lround(wfSpeedEsc_);
         const char* vel = v <= 2 ? "SLOW1" : v <= 4 ? "SLOW2" : v <= 6 ? "FAST1" : v <= 8 ? "FAST2" : "FAST3";
-        const double span = r_.taxa() / (1.0 + zoom_);
+        const double span = r_->taxa() / (1.0 + zoom_);
         char b[96];
         if (span >= 1e6) std::snprintf(b, sizeof b, "%s | %s | SPAN %.2fMHz", modoCentro_ ? "CENTER" : "FIX", vel, span / 1e6);
         else std::snprintf(b, sizeof b, "%s | %s | SPAN %.0fkHz", modoCentro_ ? "CENTER" : "FIX", vel, span / 1000.0);
@@ -2689,7 +2712,7 @@ void Ui::teclasSoft(float x, float y, float w, float h)
         if (sobre) ImGui::SetTooltip("%s", dicas[i]);
         if (!clicou) continue;
         switch (i) {
-        case 0: modoCentro_ = !modoCentro_; if (modoCentro_) r_.centralizar(r_.centroSemDc(r_.vfo())); break;
+        case 0: modoCentro_ = !modoCentro_; if (modoCentro_) r_->centralizar(r_->centroSemDc(r_->vfo())); break;
         case 1: ImGui::OpenPopup("##spanFt"); break;
         case 2: modo3d_ = !modo3d_; break;
         case 3: mono_ = !mono_; break;
@@ -2703,7 +2726,7 @@ void Ui::teclasSoft(float x, float y, float w, float h)
         ImGui::TextDisabled("SPAN (largura do escopo)");
         const float z[6] = {0, 1, 3, 7, 15, 31};
         for (float zz : z) {
-            const double span = r_.taxa() / (1.0 + zz);
+            const double span = r_->taxa() / (1.0 + zz);
             char t[32];
             if (span >= 1e6) std::snprintf(t, sizeof t, "%.2f MHz", span / 1e6); else std::snprintf(t, sizeof t, "%.0f kHz", span / 1000.0);
             if (ImGui::Selectable(t, std::fabs(zoom_ - zz) < 0.3f)) { zoom_ = zz; centrarParaZoom(true); }
@@ -2738,7 +2761,7 @@ void Ui::funcaoMulti(int func, int passos)
             std::snprintf(b, sizeof b, "CONTRAST %.0f dB", wfRange_); aviso(b, 1.0); break;
     case 3: {
         const int64_t ps = std::max(1, passo_);
-        const int64_t nf = ((int64_t)r_.vfo() / ps + passos) * ps;
+        const int64_t nf = ((int64_t)r_->vfo() / ps + passos) * ps;
         if (nf > 1000) { sintonizar((uint64_t)nf, false); R.f = (uint64_t)nf; }
         break; }
     case 4:
@@ -2771,7 +2794,7 @@ void Ui::tresDss(float x, float y, float w, float h)
     // guarda uma linha nova a cada 60 ms (o HOLD para tudo)
     const double t = agora();
     const int nb = (int)suave_.size();
-    if (!pausa_ && r_.ligado() && nb > 16 && t - ult3d_ > 0.06) {
+    if (!pausa_ && r_->ligado() && nb > 16 && t - ult3d_ > 0.06) {
         ult3d_ = t;
         if (hist3d_.size() != (size_t)NL) { hist3d_.assign(NL, std::vector<float>(NP, 0.f)); hist3dPos_ = 0; }
         std::vector<float>& L = hist3d_[hist3dPos_];
@@ -2818,7 +2841,7 @@ void Ui::tresDss(float x, float y, float w, float h)
         dl->AddLine(ImVec2(px(1, 0), pyBase(0) - hz * 0.42f * f), ImVec2(px(1, 1), pyBase(1) - hz * 0.42f * 0.55f * f), grade, 1.f);
     }
     // as linhas, de tras para a frente (a da frente tampa as de tras)
-    if (hist3d_.size() == (size_t)NL && r_.ligado()) {
+    if (hist3d_.size() == (size_t)NL && r_->ligado()) {
         dl->PushClipRect(ImVec2(sx, sy), ImVec2(sx + sw, sy + hz), true);
         std::vector<ImVec2> pts(NP);
         for (int k = NL - 1; k >= 0; --k) {
@@ -2836,7 +2859,7 @@ void Ui::tresDss(float x, float y, float w, float h)
     }
     // marcas (VFO vermelho; o SUB em DUAL)
     {
-        const float xv = (float)hzParaX((double)r_.vfo(), sx, sw);
+        const float xv = (float)hzParaX((double)r_->vfo(), sx, sw);
         dl->AddLine(ImVec2(xv, sy + 6), ImVec2(xv, sy + hz), IM_COL32(0xff, 0x40, 0x30, 220), std::max(1.f, s_));
         dl->AddTriangleFilled(ImVec2(xv - 4 * s_, sy), ImVec2(xv + 4 * s_, sy), ImVec2(xv, sy + 6 * s_), IM_COL32(0xff, 0x40, 0x30, 255));
         if (!mono_) {
@@ -2875,7 +2898,7 @@ void Ui::teclasTft()
                   "Aceso: clique de novo para desligar (squelch aberto).\nAjuste fino à mão: anel RF/SQL (FM) ou FUNC > RF/SQL.")) {
             if (sqlMedindo_) { sqlMedindo_ = false; Rv.sql = -90.f; sql_ = -90.f; sqlAplicado_ = -90.f; sqlAuto_[ativo_] = false; }
             else if (ligado) { Rv.sql = -90.f; sql_ = -90.f; sqlAplicado_ = -90.f; sqlAuto_[ativo_] = false; aviso("Squelch aberto"); }
-            else if (r_.aoVivo()) { sqlMedindo_ = true; sqlAmostras_.clear(); sqlIni_ = agora(); sqlUlt_ = 0; }
+            else if (r_->aoVivo()) { sqlMedindo_ = true; sqlAmostras_.clear(); sqlIni_ = agora(); sqlUlt_ = 0; }
         }
     }
     if (tecla("kMox", "MOX", xk(2), y, w, h, sendMudo_ ? 4 : 1, nullptr, "MOX: silencia todo o áudio (MUTE geral)")) sendMudo_ = !sendMudo_;
@@ -2928,7 +2951,7 @@ void Ui::teclasTft()
 // Coluna MODE / SSB / CW / BK-IN / MONI e o botao MULTI
 void Ui::colunaModos()
 {
-    const std::string m = r_.modo();
+    const std::string m = r_->modo();
     const float xc = FX(98), xk = FX(78), wk = FW(40);
     auto rot = [&](float yFoto, const char* t) { rotulo(18.f, xc, FY(yFoto), P_ROTULO, t, 0.5f, 46.f); };
     g_borracha = 1;                       // MODE, SSB e CW: so pontinhos
@@ -2939,16 +2962,16 @@ void Ui::colunaModos()
     if (tecla("kSsb", "", xk, FY(323), wk, FH(29), (m == "LSB" || m == "USB") ? 3 : 0, nullptr, "SSB: LSB / USB (cada toque troca)")) {
         if (m == "LSB") mudarModoPainel("USB");
         else if (m == "USB") mudarModoPainel("LSB");
-        else mudarModoPainel(r_.vfo() < 10000000 ? "LSB" : "USB");
+        else mudarModoPainel(r_->vfo() < 10000000 ? "LSB" : "USB");
     }
     rot(370, "CW");
     if (tecla("kCw", "", xk, FY(385), wk, FH(25), m == "CW" ? 3 : 0, nullptr, "CW: telegrafia (largura no SHIFT-WIDTH, tom no PROC/PITCH)"))
         mudarModoPainel("CW");
     g_borracha = 0;                       // BK-IN e MONI: pontinhos e o oval
     rot(465, "BK-IN");
-    if (tecla("kBkin", "", xk, FY(480), wk, FH(27), r_.decoders().tipo() == Decoders::CW ? 3 : 0, nullptr, "BK-IN: abre o decodificador de CW (telegrafia em texto)")) {
+    if (tecla("kBkin", "", xk, FY(480), wk, FH(27), r_->decoders().tipo() == Decoders::CW ? 3 : 0, nullptr, "BK-IN: abre o decodificador de CW (telegrafia em texto)")) {
         decAberta_ = true;
-        if (r_.decoders().tipo() != Decoders::CW) escolherDecoder(Decoders::CW, true);
+        if (r_->decoders().tipo() != Decoders::CW) escolherDecoder(Decoders::CW, true);
     }
     rot(525, "MONI");
     if (tecla("kMoni", "", xk, FY(542), wk, FH(25), 0, nullptr, "MONI: escolher a saída de som (placa / fone)")) {
@@ -2989,9 +3012,9 @@ void Ui::colunaModos()
     if (ImGui::BeginPopup("##saidaFt")) {
         auto& c = Config::instance();
         ImGui::TextDisabled("Saída de som");
-        if (ImGui::Selectable("Padrão do Windows", c.str("audio_saida").empty())) r_.trocarSaida("");
+        if (ImGui::Selectable("Padrão do Windows", c.str("audio_saida").empty())) { ra_->trocarSaida(""); rb_->trocarSaida(""); }
         for (const auto& s : saidas_)
-            if (ImGui::Selectable(s.c_str(), c.str("audio_saida") == s)) r_.trocarSaida(s);
+            if (ImGui::Selectable(s.c_str(), c.str("audio_saida") == s)) { ra_->trocarSaida(s); rb_->trocarSaida(s); }
         ImGui::EndPopup();
     }
 }
@@ -3039,12 +3062,12 @@ void Ui::faixaBandas()
     tituloPontilhado(FX(567), FY(137), FX(420), FX(715), "SUB", P_AZULSUB);
     tituloPontilhado(FX(572), FY(212), FX(425), FX(720), "MAIN", IM_COL32(0xc8, 0xcc, 0xd4, 255));
     {   // LEDzinho branco na ponta esquerda da faixa
-        const bool lig = r_.ligado();
+        const bool lig = r_->ligado();
         if (lig) dl->AddCircleFilled(M.p(FX(93), FY(202)), M.d(3.0f), IM_COL32(255, 255, 255, 50), 12);
         dl->AddRectFilled(M.p(FX(88), FY(200)), M.p(FX(99), FY(205)), lig ? IM_COL32(0xf4, 0xf6, 0xff, 255) : IM_COL32(0x22, 0x24, 0x28, 255), M.d(1.2f));
     }
     auto banda = [&](uint64_t f) { for (int b = 0; b < kNB; ++b) if (f >= kBandasHam[b].lo && f <= kBandasHam[b].hi) return b; return -1; };
-    const uint64_t fM = ativo_ == 0 ? r_.vfo() : rx_[0].f, fS = ativo_ == 1 ? r_.vfo() : rx_[1].f;
+    const uint64_t fM = ativo_ == 0 ? r_->vfo() : rx_[0].f, fS = ativo_ == 1 ? r_->vfo() : rx_[1].f;
     const int bM = banda(fM), bS = banda(fS);
     for (int b = 0; b < kNB; ++b) {
         const float xc = FX(139 + b * 71.2f), w = FW(64), x = xc - w * 0.5f;
@@ -3118,7 +3141,7 @@ void Ui::blocoCentro()
                             "SYNC: o SUB anda junto com o MAIN quando se gira o dial\nSegurar: o SUB vai para a frequência do MAIN");
         if (k == 1) tracking_ = !tracking_;
         if (k == 2) { sincronizarAtivo(); rx_[1].f = rx_[0].f; rx_[1].modo = rx_[0].modo; rx_[1].fil = rx_[0].fil;
-                      if (ativo_ == 1) { r_.setModo(rx_[1].modo); sintonizar(rx_[1].f, false); aplicarFiltro(); }
+                      if (ativo_ == 1) { r_->setModo(rx_[1].modo); sintonizar(rx_[1].f, false); aplicarFiltro(); }
                       aviso("SUB = MAIN"); }
     }
     {
@@ -3126,7 +3149,7 @@ void Ui::blocoCentro()
         const int k = tecla("kSplit", "SPLIT", FX(227), FY(267), FW(65), FH(25), split ? 3 : 1, nullptr,
                             "SPLIT: escuta num receptor e marca o outro como \"TX\"\nSegurar: QUICK SPLIT (o outro receptor vai 5 kHz acima)");
         if (k == 1) txVfo_ = split ? ativo_ : 1 - ativo_;
-        if (k == 2) { sincronizarAtivo(); rx_[1 - ativo_].f = r_.vfo() + 5000; rx_[1 - ativo_].modo = r_.modo(); txVfo_ = 1 - ativo_; aviso("QUICK SPLIT +5 kHz"); }
+        if (k == 2) { sincronizarAtivo(); rx_[1 - ativo_].f = r_->vfo() + 5000; rx_[1 - ativo_].modo = r_->modo(); txVfo_ = 1 - ativo_; aviso("QUICK SPLIT +5 kHz"); }
     }
     g_ledFora = 0;
     rotulo(18.f, FX(220), FY(310), P_ROTULO, "CLAR", 0.5f);
@@ -3146,7 +3169,7 @@ void Ui::blocoCentro()
     // AF-RF/SQL do SUB (em cima, azul) e do MAIN (embaixo)
     auto afRf = [&](int rx, float cx, float cy, float yRot, const char* id) {
         Receptor& R = rx_[rx];
-        const std::string md = rx == ativo_ ? r_.modo() : R.modo;
+        const std::string md = rx == ativo_ ? r_->modo() : R.modo;
         const bool sql = rfSql_ == 2 || (rfSql_ == 0 && grupoModo(md) >= 3);
         char d[260], sq[24];
         if (R.sql <= -90) std::snprintf(sq, sizeof sq, "aberto"); else std::snprintf(sq, sizeof sq, "%+d dB", (int)std::lround(R.sql));
@@ -3163,7 +3186,7 @@ void Ui::blocoCentro()
                 if (sql) { R.sql = std::clamp(R.sql + dO * 120.f, -90.f, 30.f); if (rx == ativo_) { sql_ = R.sql; sqlAplicado_ = R.sql; } if (R.sql <= -90.f) sqlAuto_[rx] = false; }
                 else R.rf = std::clamp(R.rf + dO * 100.f, 0.f, 100.f);
             }
-            if (rx != ativo_ && di != 0) aviso(rx == 1 ? "Este AF é do SUB. Ouvindo o MAIN: use o MAIN AF (embaixo)" : "Este AF é do MAIN. Ouvindo o SUB: use o SUB AF (em cima)", 2.5);
+            if (!duas_ && rx != ativo_ && di != 0) aviso(rx == 1 ? "Este AF é do SUB. Ouvindo o MAIN: use o MAIN AF (embaixo)" : "Este AF é do MAIN. Ouvindo o SUB: use o SUB AF (em cima)", 2.5);
         }
         g_corRot = IM_COL32(0xf4, 0xf4, 0xf4, 255);
     };
@@ -3397,7 +3420,7 @@ void Ui::blocoCentro()
             }
         }
         if (k == 2) {
-            qm_.insert(qm_.begin(), Rapida{r_.vfo(), r_.modo()});
+            qm_.insert(qm_.begin(), Rapida{r_->vfo(), r_->modo()});
             if (qm_.size() > 10) qm_.resize(10);
             qmIdx_ = -1;
             aviso("Gravado na QMB");
@@ -3410,7 +3433,7 @@ void Ui::blocoCentro()
                   "VC TUNE (pré-seletor): entrada de HF do dongle (amostragem direta Q)\nAUTO liga abaixo de 24 MHz (LED laranja), ON (vermelho), OFF")) {
             auto& c = Config::instance();
             c.set("qmode", std::string(q == "auto" ? "on" : q == "on" ? "off" : "auto"));
-            r_.aplicarConfig(); sintonizar(r_.vfo(), false);
+            r_->aplicarConfig(); sintonizar(r_->vfo(), false);
             aviso(std::string("VC TUNE (entrada HF): ") + (q == "auto" ? "ON" : q == "on" ? "OFF" : "AUTO"));
         }
     }
@@ -3477,7 +3500,7 @@ void Ui::blocoDireita()
                 if (R.memModo) {
                     int mais = 0; long long melhor = LLONG_MAX;
                     for (int i = 0; i < (int)mem_.size(); ++i) {
-                        const long long dd = std::llabs((long long)mem_[i].f - (long long)r_.vfo());
+                        const long long dd = std::llabs((long long)mem_[i].f - (long long)r_->vfo());
                         if (dd < melhor) { melhor = dd; mais = i; }
                     }
                     R.memCanal = mais; sintonizarMemoria((size_t)mais);
@@ -3487,14 +3510,14 @@ void Ui::blocoDireita()
         if (tecla("kMv", "M>V", FX(902), FY(270), FW(40), FH(22), 0, nullptr, "M>V: o canal de memória vira o VFO (sai do modo memória)")) R.memModo = false;
         {
             const int k = tecla("kVm2", "V>M", FX(952), FY(270), FW(40), FH(22), memAberta_ ? 3 : 0, nullptr, "V>M: grava a frequência atual numa memória (com nome)\nSegurar: abre a lista de memórias");
-            if (k == 1) { memAberta_ = true; std::snprintf(memNome_, sizeof memNome_, "%s %s", fmtFreq(r_.vfo()).c_str(), r_.modo().c_str()); }
+            if (k == 1) { memAberta_ = true; std::snprintf(memNome_, sizeof memNome_, "%s %s", fmtFreq(r_->vfo()).c_str(), r_->modo().c_str()); }
             if (k == 2) memAberta_ = !memAberta_;
         }
     }
     // MIC/SPEED - PROC/PITCH
     {
         float di, dO; char d[260];
-        const bool cw = grupoModo(r_.modo()) == 1;
+        const bool cw = grupoModo(r_->modo()) == 1;
         std::snprintf(d, sizeof d, "MIC/SPEED: tonalidade do áudio (%s %d%%)\n%s",
                       tom_ < 45 ? "grave" : tom_ > 55 ? "agudo" : "plano", (int)std::lround(std::fabs(tom_ - 50) * 2),
                       cw ? (std::string("PITCH: tom do CW e centro do APF (") + std::to_string((int)cwPitch_) + " Hz)").c_str()
@@ -3524,9 +3547,9 @@ void Ui::blocoDireita()
             return c;
         };
         if (rotClic("##proc", "PROC", FX(1044), proc_, "PROC: liga/desliga o compressor de áudio (força no anel PROC/PITCH)")) proc_ = !proc_;
-        if (rotClic("##keyer", "KEYER", FX(1152), r_.decoders().tipo() == Decoders::CW, "KEYER: abre o decodificador de CW")) {
+        if (rotClic("##keyer", "KEYER", FX(1152), r_->decoders().tipo() == Decoders::CW, "KEYER: abre o decodificador de CW")) {
             decAberta_ = true;
-            if (r_.decoders().tipo() != Decoders::CW) escolherDecoder(Decoders::CW, true);
+            if (r_->decoders().tipo() != Decoders::CW) escolherDecoder(Decoders::CW, true);
         }
     }
     // as duas fileiras: SUB (rotulos azuis, em cima) e MAIN (brancos, embaixo)
@@ -3563,7 +3586,7 @@ void Ui::blocoDireita()
         // SHIFT - WIDTH
         float di, dO;
         {
-            const std::string md = rx == ativo_ ? r_.modo() : R.modo;
+            const std::string md = rx == ativo_ ? r_->modo() : R.modo;
             const int g = grupoModo(md);
             float& hi = filHi_[g][R.fil];
             float& lo = filLo_[g][R.fil];
@@ -3631,7 +3654,7 @@ void Ui::popupsPainel()
         if (ImGui::MenuItem("Memórias (lista)")) memAberta_ = true;
         if (ImGui::MenuItem("Digitar a frequência (kHz)")) { entrando_ = true; entrada_.clear(); }
         if (ImGui::BeginMenu("Gravador")) {
-            if (ImGui::MenuItem(r_.som().gravando() ? "Parar a gravação (STOP)" : "Gravar o áudio (REC)")) alternarGravacao();
+            if (ImGui::MenuItem(r_->som().gravando() ? "Parar a gravação (STOP)" : "Gravar o áudio (REC)")) alternarGravacao();
             if (ImGui::MenuItem("Tocar a última gravação (PLAY)")) tocarUltimaGravacao();
             if (ImGui::MenuItem("Parar de tocar")) PlaySoundA(nullptr, nullptr, 0);
             ImGui::EndMenu();
@@ -3640,14 +3663,14 @@ void Ui::popupsPainel()
         if (ImGui::BeginMenu("GEN - VHF / UHF")) { itensGen(1); ImGui::EndMenu(); }
         ImGui::Separator();
         if (ImGui::BeginMenu("Aparelho")) {
-            if (ImGui::MenuItem("T-AGC (AGC do dongle)", nullptr, c.agc())) { c.set("agc", !c.agc()); r_.aplicarConfig(); }
-            if (ImGui::MenuItem("Bias-T (alimenta a antena ativa)", nullptr, c.biasT())) { c.set("bias_t", !c.biasT()); r_.aplicarConfig(); }
+            if (ImGui::MenuItem("T-AGC (AGC do dongle)", nullptr, c.agc())) { c.set("agc", !c.agc()); r_->aplicarConfig(); }
+            if (ImGui::MenuItem("Bias-T (alimenta a antena ativa)", nullptr, c.biasT())) { c.set("bias_t", !c.biasT()); r_->aplicarConfig(); }
             if (ImGui::MenuItem("Tirar o risco do DC do centro", nullptr, c.dcRemove())) c.set("dc_remove", !c.dcRemove());
             if (ImGui::BeginMenu("Taxa de amostragem (largura do escopo)")) {
                 const unsigned tx[] = {250000, 1024000, 1400000, 1800000, 1920000, 2048000, 2400000, 2560000, 2880000, 3200000};
                 for (unsigned t : tx) {
                     char r[32]; std::snprintf(r, sizeof r, "%.3f Msps", t / 1e6);
-                    if (ImGui::MenuItem(r, nullptr, c.sampleRate() == t)) { c.set("sample_rate", (long long)t); r_.aplicarConfig(); }
+                    if (ImGui::MenuItem(r, nullptr, c.sampleRate() == t)) { c.set("sample_rate", (long long)t); r_->aplicarConfig(); }
                 }
                 ImGui::EndMenu();
             }
@@ -3655,10 +3678,10 @@ void Ui::popupsPainel()
                 const struct { const char* n; uint64_t hz; } op[] = {{"Desligado", 0}, {"125 MHz (Ham It Up, SpyVerter)", 125000000},
                                                                      {"120 MHz", 120000000}, {"100 MHz", 100000000}, {"106,25 MHz", 106250000}};
                 for (const auto& o : op)
-                    if (ImGui::MenuItem(o.n, nullptr, r_.xvtr() == o.hz)) {
-                        r_.setXvtr(o.hz);
+                    if (ImGui::MenuItem(o.n, nullptr, r_->xvtr() == o.hz)) {
+                        r_->setXvtr(o.hz);
                         if (o.hz) c.set("qmode", std::string("off"));
-                        r_.aplicarConfig();
+                        r_->aplicarConfig();
                     }
                 ImGui::EndMenu();
             }
@@ -3732,5 +3755,9 @@ void Ui::popupsPainel()
         ImGui::EndPopup();
     }
 }
+
+// dois aparelhos (um dongle em cada VFO) - ligarDuas, atualizarDuas, configVfoB, janelaSub
+#define DUAS_SEM_SUB
+#include "DoisAparelhos.inc"
 
 } // namespace masdr
